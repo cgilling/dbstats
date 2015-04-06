@@ -1,5 +1,6 @@
 # dbstats
 [![Build Status](https://travis-ci.org/cgilling/dbstats.svg?branch=master)](https://travis-ci.org/cgilling/dbstats)
+[![GoDoc](https://godoc.org/github.com/cgilling/dbstats?status.svg)](https://godoc.org/github.com/cgilling/dbstats)
 
 A golang database/sql driver wrapper that provides stats and hooks around database operations
 
