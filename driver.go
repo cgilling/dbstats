@@ -2,7 +2,6 @@ package dbstats
 
 import (
 	"database/sql/driver"
-	"sync/atomic"
 	"time"
 )
 
@@ -33,42 +32,6 @@ type Driver interface {
 	// should be called before any database activity happens as there is no gaurantee that
 	// locking will occur between addining and using Hooks.
 	AddHook(h Hook)
-
-	// OpenConns returns the current count of open connections.
-	OpenConns() int
-
-	// TotalConns returns the total number of connections ever made.
-	TotalConns() int
-
-	// OpenStmts returns the current count of prepared statements.
-	OpenStmts() int
-
-	// TotalStmts returns the total number of prepared statements ever made.
-	TotalStmts() int
-
-	// OpenTxs returns the current number of open transactions
-	OpenTxs() int
-
-	// TotalTxs returns the total number of transactions ever openned.
-	TotalTxs() int
-
-	// CommittedTxs returns the total number of transactions that were committed.
-	CommittedTxs() int
-
-	// RolledbackTxs returns the total number of transactions there were rolled back.
-	RolledbackTxs() int
-
-	// Queries returns the total number of Query statements ran.
-	Queries() int
-
-	// Execs returns the total number of Exex statements ran.
-	Execs() int
-
-	// RowsIterated returns the total number of rows that have been iterated through.
-	RowsIterated() int
-
-	// Reset resets all stats to default values.
-	Reset()
 }
 
 func New(open OpenFunc) Driver {
@@ -78,18 +41,6 @@ func New(open OpenFunc) Driver {
 type statsDriver struct {
 	open  OpenFunc
 	hooks []Hook
-
-	openConns     int64
-	totalConns    int64
-	openStmts     int64
-	totalStmts    int64
-	openTxs       int64
-	totalTxs      int64
-	committedTxs  int64
-	rolledbackTxs int64
-	queries       int64
-	execs         int64
-	rowsIterated  int64
 }
 
 func (s *statsDriver) Open(name string) (driver.Conn, error) {
@@ -119,116 +70,52 @@ func (s *statsDriver) Open(name string) (driver.Conn, error) {
 func (s *statsDriver) AddHook(h Hook) {
 	s.hooks = append(s.hooks, h)
 }
-
-func (s *statsDriver) Reset() {
-	atomic.StoreInt64(&s.openConns, 0)
-	atomic.StoreInt64(&s.totalConns, 0)
-	atomic.StoreInt64(&s.openStmts, 0)
-	atomic.StoreInt64(&s.totalStmts, 0)
-	atomic.StoreInt64(&s.openTxs, 0)
-	atomic.StoreInt64(&s.totalTxs, 0)
-	atomic.StoreInt64(&s.committedTxs, 0)
-	atomic.StoreInt64(&s.rolledbackTxs, 0)
-	atomic.StoreInt64(&s.queries, 0)
-	atomic.StoreInt64(&s.execs, 0)
-	atomic.StoreInt64(&s.rowsIterated, 0)
-}
-
-func (s *statsDriver) OpenConns() int {
-	return int(atomic.LoadInt64(&s.openConns))
-}
-func (s *statsDriver) TotalConns() int {
-	return int(atomic.LoadInt64(&s.totalConns))
-}
-func (s *statsDriver) OpenStmts() int {
-	return int(atomic.LoadInt64(&s.openStmts))
-}
-func (s *statsDriver) TotalStmts() int {
-	return int(atomic.LoadInt64(&s.totalStmts))
-}
-func (s *statsDriver) OpenTxs() int {
-	return int(atomic.LoadInt64(&s.openTxs))
-}
-func (s *statsDriver) TotalTxs() int {
-	return int(atomic.LoadInt64(&s.totalTxs))
-}
-func (s *statsDriver) CommittedTxs() int {
-	return int(atomic.LoadInt64(&s.committedTxs))
-}
-func (s *statsDriver) RolledbackTxs() int {
-	return int(atomic.LoadInt64(&s.rolledbackTxs))
-}
-func (s *statsDriver) Queries() int {
-	return int(atomic.LoadInt64(&s.queries))
-}
-func (s *statsDriver) Execs() int {
-	return int(atomic.LoadInt64(&s.execs))
-}
-func (s *statsDriver) RowsIterated() int {
-	return int(atomic.LoadInt64(&s.rowsIterated))
-}
-
 func (s *statsDriver) ConnOpened() {
-	atomic.AddInt64(&s.openConns, 1)
-	atomic.AddInt64(&s.totalConns, 1)
 	for _, h := range s.hooks {
 		h.ConnOpened()
 	}
 }
 func (s *statsDriver) ConnClosed() {
-	atomic.AddInt64(&s.openConns, -1)
 	for _, h := range s.hooks {
 		h.ConnClosed()
 	}
 }
 func (s *statsDriver) StmtPrepared(query string) {
-	atomic.AddInt64(&s.openStmts, 1)
-	atomic.AddInt64(&s.totalStmts, 1)
 	for _, h := range s.hooks {
 		h.StmtPrepared(query)
 	}
 }
 func (s *statsDriver) StmtClosed() {
-	atomic.AddInt64(&s.openStmts, -1)
 	for _, h := range s.hooks {
 		h.StmtClosed()
 	}
 }
 func (s *statsDriver) TxBegan() {
-	atomic.AddInt64(&s.openTxs, 1)
-	atomic.AddInt64(&s.totalTxs, 1)
 	for _, h := range s.hooks {
 		h.TxBegan()
 	}
 }
 func (s *statsDriver) TxCommitted() {
-	atomic.AddInt64(&s.openTxs, -1)
-	atomic.AddInt64(&s.committedTxs, 1)
 	for _, h := range s.hooks {
 		h.TxCommitted()
 	}
 }
 func (s *statsDriver) TxRolledback() {
-	atomic.AddInt64(&s.openTxs, -1)
-	atomic.AddInt64(&s.rolledbackTxs, 1)
 	for _, h := range s.hooks {
 		h.TxRolledback()
 	}
 }
 func (s *statsDriver) Queried(d time.Duration, query string) {
-	atomic.AddInt64(&s.queries, 1)
 	for _, h := range s.hooks {
 		h.Queried(d, query)
 	}
 }
 func (s *statsDriver) Execed(d time.Duration, query string) {
-	atomic.AddInt64(&s.execs, 1)
 	for _, h := range s.hooks {
 		h.Execed(d, query)
 	}
 }
 func (s *statsDriver) RowIterated() {
-	atomic.AddInt64(&s.rowsIterated, 1)
 	for _, h := range s.hooks {
 		h.RowIterated()
 	}

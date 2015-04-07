@@ -2,14 +2,10 @@
 [![Build Status](https://travis-ci.org/cgilling/dbstats.svg?branch=master)](https://travis-ci.org/cgilling/dbstats)
 [![GoDoc](https://godoc.org/github.com/cgilling/dbstats?status.svg)](https://godoc.org/github.com/cgilling/dbstats)
 
-A golang database/sql driver wrapper that provides stats and hooks around database operations
-
-## Alpha Notice
-
-The api for retrieving stats will most likely change in the near future.
+A golang database/sql driver wrapper that provides hooks around database operations in order to gather usage/performance statistics.
 
 ## Usage
-`dbstats` provides a wrapper for a `database/sql/driver.Driver` that allows for retrieving statistics with regards to its usage. This is done by wrapping the Driver's `Open` function and then registering the new wrapped driver with `database/sql`.
+`dbstats` provides a wrapper for a `database/sql/driver.Driver` . This is done by wrapping the Driver's `Open` function and then registering the new wrapped driver with `database/sql`. Once the driver has been wrapped, `Hook`s can be registered in order to gather various statistics. A very basic Hook `CounterHook` is provided by this package.
 
 ```go
 import (
@@ -19,11 +15,12 @@ import (
   "github.com/lib/pq"
 )
 
-var pqStats dbstats.Driver
+var pqStats dbstats.CounterHook
 
 func init() {
-  pqStats = dbstats.New(pq.Open)
-  sql.Register("pqstats", pqStats)
+  s := dbstats.New(pq.Open)
+  s.AddHook(pqStats)
+  sql.Register("pqstats", s)
 }
 
 func main() {

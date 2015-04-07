@@ -51,7 +51,6 @@ func reset() {
 	execerCalled = false
 	useColumnConverter = false
 	columnCoverterCalled = false
-	stats.Reset()
 	hook.reset()
 }
 
@@ -276,8 +275,8 @@ func TestDriverHandlesExecerQueryerCorrectly(t *testing.T) {
 
 	s, _ := db.Prepare("SELECT * FROM my_table WHERE id=?")
 	s.Close()
-	if execerQueryerStats.TotalStmts() != 1 {
-		t.Errorf("Expected TotalStmts == 1, got %d", execerQueryerStats.TotalStmts())
+	if hook.stmtPreparedCount != 1 {
+		t.Errorf("Expected StatementPrepared to be called 1 time, got %d", hook.stmtPreparedCount)
 	}
 }
 
@@ -292,14 +291,9 @@ func TestDriverHandlesExecerCorrectly(t *testing.T) {
 		t.Errorf("Exec returned error: %v", err)
 	case !execerCalled:
 		t.Errorf("Expected execer.Exec to be called")
-	case execerStats.Execs() != 1:
-		t.Errorf("Expected Execs == 1, got %d", execerStats.Execs())
-	}
-
-	if hook.execedCount != 1 {
+	case hook.execedCount != 1:
 		t.Errorf("Expected Execed to be called 1 time, got %d", hook.execedCount)
 	}
-
 }
 
 func TestDriverHandlesQueryerCorrectly(t *testing.T) {
@@ -313,14 +307,10 @@ func TestDriverHandlesQueryerCorrectly(t *testing.T) {
 		t.Errorf("Query returned error: %v", err)
 	case !queryerCalled:
 		t.Errorf("Expected Queryer.Query to be called")
-	case queryerStats.Queries() != 1:
-		t.Errorf("Expected Queries == 1, got %d", queryerStats.Queries())
-	}
-	rows.Close()
-
-	if hook.queriedCount != 1 {
+	case hook.queriedCount != 1:
 		t.Errorf("Expected Queried to be called 1 time, got %d", hook.queriedCount)
 	}
+	rows.Close()
 }
 
 func TestDriverKeepsTxStats(t *testing.T) {
@@ -330,38 +320,18 @@ func TestDriverKeepsTxStats(t *testing.T) {
 	tx, _ := db.Begin()
 	tx2, _ := db.Begin()
 
-	if stats.OpenTxs() != 2 {
-		t.Errorf("expected OpenTxs to return 2, got %d", stats.OpenTxs())
-	}
-
-	tx2.Rollback()
-	switch {
-	case stats.OpenTxs() != 1:
-		t.Errorf("Expected Rollback to close transaction")
-	case stats.TotalTxs() != 2:
-		t.Errorf("Expected TotalTxs to return 2 even after Rollback: got %d", stats.TotalTxs())
-	case stats.RolledbackTxs() != 1:
-		t.Errorf("Expected RolledbackTxs to be 1, got %d", stats.RolledbackTxs())
-	}
-
-	tx.Commit()
-	switch {
-	case stats.OpenTxs() != 0:
-		t.Errorf("Expected Commit to close transaction")
-	case stats.TotalTxs() != 2:
-		t.Errorf("Expected TotalTxs to return 2 even after Commit: got %d", stats.TotalTxs())
-	case stats.CommittedTxs() != 1:
-		t.Errorf("Expected CommittedTxs to be 1, got %d", stats.CommittedTxs())
-	}
-
 	if hook.txBeganCount != 2 {
 		t.Errorf("Expected TxBegan to be called 2 times, got %d", hook.txBeganCount)
 	}
-	if hook.txCommitedCount != 1 {
-		t.Errorf("Expected TxCommitted to be called 1 time, got %d", hook.txCommitedCount)
-	}
+
+	tx2.Rollback()
 	if hook.txRolledbackCount != 1 {
 		t.Errorf("Expected TxRolledback to be called 1 time, got %d", hook.txRolledbackCount)
+	}
+
+	tx.Commit()
+	if hook.txCommitedCount != 1 {
+		t.Errorf("Expected TxCommitted to be called 1 time, got %d", hook.txCommitedCount)
 	}
 }
 
@@ -369,53 +339,35 @@ func TestDriverKeepsStmtStats(t *testing.T) {
 	reset()
 	db, _ := sql.Open("fakeStats", "")
 	defer db.Close()
-	stmt, err := db.Prepare("SELECT now()")
-	switch {
-	case err != nil:
-		t.Errorf("failed to Prepare: %v", err)
-	case stats.OpenStmts() != 1:
-		t.Errorf("expect OpenStmts to be 1, got %d", stats.OpenStmts())
-	case stats.TotalStmts() != 1:
-		t.Errorf("expect TotalStmts to be 1, got %d", stats.TotalStmts())
+	stmt, _ := db.Prepare("SELECT now()")
+	if hook.stmtPreparedCount != 1 {
+		t.Errorf("Expected StmtPrepared to be called 1 time, got %d", hook.stmtPreparedCount)
 	}
 
 	stmt.Exec(1)
-	if stats.Execs() != 1 {
-		t.Errorf("expect stmt.Exec to cause Execs to increase")
+	if hook.execedCount != 1 {
+		t.Errorf("Expected Execed to be called 1 time, got %d", hook.queriedCount)
 	}
+
 	rows, _ := stmt.Query(1)
-	if stats.Queries() != 1 {
-		t.Errorf("expect stmt.Query to cause Queries to increase")
+	if hook.queriedCount != 1 {
+		t.Errorf("Expected Queried to be called 1 time, got %d", hook.queriedCount)
 	}
+
 	rowCount := 0
 	for rows.Next() {
 		rowCount++
 	}
-	if stats.RowsIterated() != rowCount {
-		t.Errorf("Expected RowsIterated == %d, got %d", rowCount, stats.RowsIterated())
+	if hook.rowIteratedCount != 1 {
+		t.Errorf("Expected RowIteratred to be called 1 time, got %d", hook.queriedCount)
 	}
 	rows.Close()
 
 	stmt.Close()
-	if stats.OpenStmts() != 0 {
-		t.Errorf("Expected open statements to be zero after close: got %d", stats.OpenStmts())
-	}
-
-	if hook.stmtPreparedCount != 1 {
-		t.Errorf("Expected StmtPrepared to be called 1 time, got %d", hook.stmtPreparedCount)
-	}
 	if hook.stmtClosedCount != 1 {
 		t.Errorf("Expected StmtClosed to be called 1 time, got %d", hook.stmtClosedCount)
 	}
-	if hook.queriedCount != 1 {
-		t.Errorf("Expected Queried to be called 1 time, got %d", hook.queriedCount)
-	}
-	if hook.execedCount != 1 {
-		t.Errorf("Expected Execed to be called 1 time, got %d", hook.queriedCount)
-	}
-	if hook.rowIteratedCount != 1 {
-		t.Errorf("Expected RowIteratred to be called 1 time, got %d", hook.queriedCount)
-	}
+
 }
 
 func TestDriverFowardsToWrapped(t *testing.T) {
@@ -440,21 +392,10 @@ func TestDriverKeepsConnectionStats(t *testing.T) {
 	db, _ := sql.Open("fakeStats", "")
 	db.SetMaxIdleConns(10)
 	db.Ping()
-	switch {
-	case stats.TotalConns() != 1:
-		t.Errorf("Expected there to be 1 total connection, actually was %d", stats.TotalConns())
-	case stats.OpenConns() != 1:
-		t.Errorf("Expected there to be 1 open connection, actually was %d", stats.OpenConns())
-	}
-
-	db.Close()
-	if stats.OpenConns() != 0 {
-		t.Errorf("Expected no open connects after db close, got %d", stats.OpenConns())
-	}
-
 	if hook.connOpenedCount != 1 {
 		t.Errorf("Expected hook to have ConnOpened called 1 time, got %d", hook.connOpenedCount)
 	}
+	db.Close()
 	if hook.connClosedCount != 1 {
 		t.Errorf("Expected hook to have ConnClosed called 1 time, got %d", hook.connClosedCount)
 	}
