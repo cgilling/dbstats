@@ -11,7 +11,8 @@ import (
 // function.
 type OpenFunc func(name string) (driver.Conn, error)
 
-// Hook is an interface through which database events can be received.
+// Hook is an interface through which database events can be received. A Hook may received
+// multiple events concurrently.
 type Hook interface {
 	ConnOpened()
 	ConnClosed()
@@ -27,6 +28,11 @@ type Hook interface {
 
 type Driver interface {
 	driver.Driver
+
+	// AddHook will add a Hook to be called when various database events occurs. AddHook
+	// should be called before any database activity happens as there is no gaurantee that
+	// locking will occur between addining and using Hooks.
+	AddHook(h Hook)
 
 	// OpenConns returns the current count of open connections.
 	OpenConns() int
@@ -70,7 +76,9 @@ func New(open OpenFunc) Driver {
 }
 
 type statsDriver struct {
-	open          OpenFunc
+	open  OpenFunc
+	hooks []Hook
+
 	openConns     int64
 	totalConns    int64
 	openStmts     int64
@@ -106,6 +114,10 @@ func (s *statsDriver) Open(name string) (driver.Conn, error) {
 		return &statsExecer{statsConn: statc, wrapped: e}, nil
 	}
 	return statc, nil
+}
+
+func (s *statsDriver) AddHook(h Hook) {
+	s.hooks = append(s.hooks, h)
 }
 
 func (s *statsDriver) Reset() {
@@ -159,37 +171,67 @@ func (s *statsDriver) RowsIterated() int {
 func (s *statsDriver) ConnOpened() {
 	atomic.AddInt64(&s.openConns, 1)
 	atomic.AddInt64(&s.totalConns, 1)
+	for _, h := range s.hooks {
+		h.ConnOpened()
+	}
 }
 func (s *statsDriver) ConnClosed() {
 	atomic.AddInt64(&s.openConns, -1)
+	for _, h := range s.hooks {
+		h.ConnClosed()
+	}
 }
 func (s *statsDriver) StmtPrepared(query string) {
 	atomic.AddInt64(&s.openStmts, 1)
 	atomic.AddInt64(&s.totalStmts, 1)
+	for _, h := range s.hooks {
+		h.StmtPrepared(query)
+	}
 }
 func (s *statsDriver) StmtClosed() {
 	atomic.AddInt64(&s.openStmts, -1)
+	for _, h := range s.hooks {
+		h.StmtClosed()
+	}
 }
 func (s *statsDriver) TxBegan() {
 	atomic.AddInt64(&s.openTxs, 1)
 	atomic.AddInt64(&s.totalTxs, 1)
+	for _, h := range s.hooks {
+		h.TxBegan()
+	}
 }
 func (s *statsDriver) TxCommitted() {
 	atomic.AddInt64(&s.openTxs, -1)
 	atomic.AddInt64(&s.committedTxs, 1)
+	for _, h := range s.hooks {
+		h.TxCommitted()
+	}
 }
 func (s *statsDriver) TxRolledback() {
 	atomic.AddInt64(&s.openTxs, -1)
 	atomic.AddInt64(&s.rolledbackTxs, 1)
+	for _, h := range s.hooks {
+		h.TxRolledback()
+	}
 }
 func (s *statsDriver) Queried(d time.Duration, query string) {
 	atomic.AddInt64(&s.queries, 1)
+	for _, h := range s.hooks {
+		h.Queried(d, query)
+	}
 }
 func (s *statsDriver) Execed(d time.Duration, query string) {
 	atomic.AddInt64(&s.execs, 1)
+	for _, h := range s.hooks {
+		h.Execed(d, query)
+	}
 }
 func (s *statsDriver) RowIterated() {
 	atomic.AddInt64(&s.rowsIterated, 1)
+	for _, h := range s.hooks {
+		h.RowIterated()
+	}
 }
 
 type statsConn struct {
