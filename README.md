@@ -1,5 +1,6 @@
 # dbstats
 [![Build Status](https://travis-ci.org/cgilling/dbstats.svg?branch=master)](https://travis-ci.org/cgilling/dbstats)
+[![Coverage](http://gocover.io/_badge/github.com/cgilling/dbstats)](http://gocover.io/github.com/cgilling/dbstats)
 [![GoDoc](https://godoc.org/github.com/cgilling/dbstats?status.svg)](https://godoc.org/github.com/cgilling/dbstats)
 
 A golang database/sql driver wrapper that provides hooks around database operations in order to gather usage/performance statistics.
