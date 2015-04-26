@@ -77,56 +77,56 @@ func (h *CounterHook) RowsIterated() int {
 }
 
 // ConnOpened implements ConnOpened of the Hook interface.
-func (h *CounterHook) ConnOpened() {
+func (h *CounterHook) ConnOpened(err error) {
 	atomic.AddInt64(&h.openConns, 1)
 	atomic.AddInt64(&h.totalConns, 1)
 }
 
 // ConnClosed implements ConnClosed of the Hook interface.
-func (h *CounterHook) ConnClosed() {
+func (h *CounterHook) ConnClosed(err error) {
 	atomic.AddInt64(&h.openConns, -1)
 }
 
 // StmtPrepared implements StmtPrepared of the Hook interface.
-func (h *CounterHook) StmtPrepared(query string) {
+func (h *CounterHook) StmtPrepared(query string, err error) {
 	atomic.AddInt64(&h.openStmts, 1)
 	atomic.AddInt64(&h.totalStmts, 1)
 }
 
 // StmtClosed implements StmtClosed of the Hook interface.
-func (h *CounterHook) StmtClosed() {
+func (h *CounterHook) StmtClosed(err error) {
 	atomic.AddInt64(&h.openStmts, -1)
 }
 
 // TxBegan implements TxBegan of the Hook interface.
-func (h *CounterHook) TxBegan() {
+func (h *CounterHook) TxBegan(err error) {
 	atomic.AddInt64(&h.openTxs, 1)
 	atomic.AddInt64(&h.totalTxs, 1)
 }
 
 // TxCommitted implements TxCommitted of the Hook interface.
-func (h *CounterHook) TxCommitted() {
+func (h *CounterHook) TxCommitted(err error) {
 	atomic.AddInt64(&h.openTxs, -1)
 	atomic.AddInt64(&h.committedTxs, 1)
 }
 
 // TxRolledback implements TxRolledback of the Hook interface.
-func (h *CounterHook) TxRolledback() {
+func (h *CounterHook) TxRolledback(err error) {
 	atomic.AddInt64(&h.openTxs, -1)
 	atomic.AddInt64(&h.rolledbackTxs, 1)
 }
 
 // Queried implements Queried of the Hook interface.
-func (h *CounterHook) Queried(d time.Duration, query string) {
+func (h *CounterHook) Queried(d time.Duration, query string, err error) {
 	atomic.AddInt64(&h.queries, 1)
 }
 
 // Execed implements Execed of the Hook interface.
-func (h *CounterHook) Execed(d time.Duration, query string) {
+func (h *CounterHook) Execed(d time.Duration, query string, err error) {
 	atomic.AddInt64(&h.execs, 1)
 }
 
 // RowIterated implements RowIterated of the Hook interface.
-func (h *CounterHook) RowIterated() {
+func (h *CounterHook) RowIterated(err error) {
 	atomic.AddInt64(&h.rowsIterated, 1)
 }

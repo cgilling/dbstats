@@ -8,7 +8,7 @@ import (
 func TestCounterHookConnections(t *testing.T) {
 	h := &CounterHook{}
 
-	h.ConnOpened()
+	h.ConnOpened(nil)
 	if h.OpenConns() != 1 {
 		t.Errorf("Expected ConnOpened to increment OpenConns to 1, got %d", h.OpenConns())
 	}
@@ -16,7 +16,7 @@ func TestCounterHookConnections(t *testing.T) {
 		t.Errorf("Expected ConnOpened to increment TotalConns to 1, got %d", h.TotalConns())
 	}
 
-	h.ConnClosed()
+	h.ConnClosed(nil)
 	if h.OpenConns() != 0 {
 		t.Errorf("Expected ConnClosed to decrement OpenConns to 0, got %d", h.OpenConns())
 	}
@@ -28,7 +28,7 @@ func TestCounterHookConnections(t *testing.T) {
 func TestCounterHookStatements(t *testing.T) {
 	h := &CounterHook{}
 
-	h.StmtPrepared("SELECT 1")
+	h.StmtPrepared("SELECT 1", nil)
 	if h.OpenStmts() != 1 {
 		t.Errorf("Expected StmtPrepared to increment OpenStmts to 1, got %d", h.OpenStmts())
 	}
@@ -36,7 +36,7 @@ func TestCounterHookStatements(t *testing.T) {
 		t.Errorf("Expected StmtPrepared to increment TotalStmts to 1, got %d", h.TotalStmts())
 	}
 
-	h.StmtClosed()
+	h.StmtClosed(nil)
 	if h.OpenStmts() != 0 {
 		t.Errorf("Expected StmtClosed to decrement OpenStmts to 0, got %d", h.OpenStmts())
 	}
@@ -48,7 +48,7 @@ func TestCounterHookStatements(t *testing.T) {
 func TestCounterHookTransactions(t *testing.T) {
 	h := &CounterHook{}
 
-	h.TxBegan()
+	h.TxBegan(nil)
 	if h.OpenTxs() != 1 {
 		t.Errorf("Expected TxBegan to increment OpenTxs to 1, got %d", h.OpenTxs())
 	}
@@ -56,7 +56,7 @@ func TestCounterHookTransactions(t *testing.T) {
 		t.Errorf("Expected TxBegan to increment TotalTxs to 1, got %d", h.TotalTxs())
 	}
 
-	h.TxCommitted()
+	h.TxCommitted(nil)
 	if h.OpenTxs() != 0 {
 		t.Errorf("Expected TxCommitted to decrement OpenTxs to 0, got %d", h.OpenTxs())
 	}
@@ -67,8 +67,8 @@ func TestCounterHookTransactions(t *testing.T) {
 		t.Errorf("Expected TxCommitted to increment CommittedTxs to 1, got %d", h.CommittedTxs())
 	}
 
-	h.TxBegan()
-	h.TxRolledback()
+	h.TxBegan(nil)
+	h.TxRolledback(nil)
 	if h.OpenTxs() != 0 {
 		t.Errorf("Expected TxRolledback to decrement OpenTxs to 0, got %d", h.OpenTxs())
 	}
@@ -83,17 +83,17 @@ func TestCounterHookTransactions(t *testing.T) {
 func TestCounterHookQueriesExecsRows(t *testing.T) {
 	h := &CounterHook{}
 
-	h.Queried(time.Millisecond*10, "SELECT 1")
+	h.Queried(time.Millisecond*10, "SELECT 1", nil)
 	if h.Queries() != 1 {
 		t.Errorf("Expected Queried to increment Queries to 1, got %d", h.Queries())
 	}
 
-	h.Execed(time.Millisecond, "UPDATE my_table SET myvar=?")
+	h.Execed(time.Millisecond, "UPDATE my_table SET myvar=?", nil)
 	if h.Execs() != 1 {
 		t.Errorf("Expected Execed to increment Execs to 1, got %d", h.Execs())
 	}
 
-	h.RowIterated()
+	h.RowIterated(nil)
 	if h.RowsIterated() != 1 {
 		t.Errorf("Expected RowIterated to increment RowsIterated to 1, got %d", h.RowsIterated())
 	}

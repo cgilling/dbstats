@@ -2,6 +2,7 @@ package dbstats
 
 import (
 	"database/sql/driver"
+	"io"
 	"time"
 )
 
@@ -11,18 +12,20 @@ import (
 type OpenFunc func(name string) (driver.Conn, error)
 
 // Hook is an interface through which database events can be received. A Hook may received
-// multiple events concurrently.
+// multiple events concurrently. Each function's last argument is of type error which will
+// contain an error encountered while trying to perform the action. The one exception is
+// RowInterated which will not return io.EOF because it is an expected return value.
 type Hook interface {
-	ConnOpened()
-	ConnClosed()
-	StmtPrepared(query string)
-	StmtClosed()
-	TxBegan()
-	TxCommitted()
-	TxRolledback()
-	Queried(d time.Duration, query string)
-	Execed(d time.Duration, query string)
-	RowIterated()
+	ConnOpened(err error)
+	ConnClosed(err error)
+	StmtPrepared(query string, err error)
+	StmtClosed(err error)
+	TxBegan(err error)
+	TxCommitted(err error)
+	TxRolledback(err error)
+	Queried(d time.Duration, query string, err error)
+	Execed(d time.Duration, query string, err error)
+	RowIterated(err error)
 }
 
 type Driver interface {
@@ -45,11 +48,10 @@ type statsDriver struct {
 
 func (s *statsDriver) Open(name string) (driver.Conn, error) {
 	c, err := s.open(name)
+	s.ConnOpened(err)
 	if err != nil {
 		return c, err
 	}
-
-	s.ConnOpened()
 	statc := &statsConn{d: s, wrapped: c}
 	q, isQ := c.(driver.Queryer)
 	e, isE := c.(driver.Execer)
@@ -70,54 +72,54 @@ func (s *statsDriver) Open(name string) (driver.Conn, error) {
 func (s *statsDriver) AddHook(h Hook) {
 	s.hooks = append(s.hooks, h)
 }
-func (s *statsDriver) ConnOpened() {
+func (s *statsDriver) ConnOpened(err error) {
 	for _, h := range s.hooks {
-		h.ConnOpened()
+		h.ConnOpened(err)
 	}
 }
-func (s *statsDriver) ConnClosed() {
+func (s *statsDriver) ConnClosed(err error) {
 	for _, h := range s.hooks {
-		h.ConnClosed()
+		h.ConnClosed(err)
 	}
 }
-func (s *statsDriver) StmtPrepared(query string) {
+func (s *statsDriver) StmtPrepared(query string, err error) {
 	for _, h := range s.hooks {
-		h.StmtPrepared(query)
+		h.StmtPrepared(query, err)
 	}
 }
-func (s *statsDriver) StmtClosed() {
+func (s *statsDriver) StmtClosed(err error) {
 	for _, h := range s.hooks {
-		h.StmtClosed()
+		h.StmtClosed(err)
 	}
 }
-func (s *statsDriver) TxBegan() {
+func (s *statsDriver) TxBegan(err error) {
 	for _, h := range s.hooks {
-		h.TxBegan()
+		h.TxBegan(err)
 	}
 }
-func (s *statsDriver) TxCommitted() {
+func (s *statsDriver) TxCommitted(err error) {
 	for _, h := range s.hooks {
-		h.TxCommitted()
+		h.TxCommitted(err)
 	}
 }
-func (s *statsDriver) TxRolledback() {
+func (s *statsDriver) TxRolledback(err error) {
 	for _, h := range s.hooks {
-		h.TxRolledback()
+		h.TxRolledback(err)
 	}
 }
-func (s *statsDriver) Queried(d time.Duration, query string) {
+func (s *statsDriver) Queried(d time.Duration, query string, err error) {
 	for _, h := range s.hooks {
-		h.Queried(d, query)
+		h.Queried(d, query, err)
 	}
 }
-func (s *statsDriver) Execed(d time.Duration, query string) {
+func (s *statsDriver) Execed(d time.Duration, query string, err error) {
 	for _, h := range s.hooks {
-		h.Execed(d, query)
+		h.Execed(d, query, err)
 	}
 }
-func (s *statsDriver) RowIterated() {
+func (s *statsDriver) RowIterated(err error) {
 	for _, h := range s.hooks {
-		h.RowIterated()
+		h.RowIterated(err)
 	}
 }
 
@@ -128,8 +130,8 @@ type statsConn struct {
 
 func (c *statsConn) Prepare(query string) (driver.Stmt, error) {
 	s, err := c.wrapped.Prepare(query)
+	c.d.StmtPrepared(query, err)
 	if err == nil {
-		c.d.StmtPrepared(query)
 		cc, isCc := s.(driver.ColumnConverter)
 		if isCc {
 			s = &statsColumnConverter{
@@ -145,14 +147,14 @@ func (c *statsConn) Prepare(query string) (driver.Stmt, error) {
 
 func (c *statsConn) Close() error {
 	err := c.wrapped.Close()
-	c.d.ConnClosed()
+	c.d.ConnClosed(err)
 	return err
 }
 
 func (c *statsConn) Begin() (driver.Tx, error) {
 	tx, err := c.wrapped.Begin()
+	c.d.TxBegan(err)
 	if err == nil {
-		c.d.TxBegan()
 		tx = &statsTx{d: c.d, wrapped: tx}
 	}
 	return tx, err
@@ -167,8 +169,8 @@ func (q *statsQueryer) Query(query string, args []driver.Value) (driver.Rows, er
 	start := time.Now()
 	r, err := q.wrapped.Query(query, args)
 	dur := time.Now().Sub(start)
+	q.statsConn.d.Queried(dur, query, err)
 	if err == nil {
-		q.statsConn.d.Queried(dur, query)
 		r = &statsRows{d: q.statsConn.d, wrapped: r}
 	}
 	return r, err
@@ -183,9 +185,7 @@ func (e *statsExecer) Exec(query string, args []driver.Value) (driver.Result, er
 	start := time.Now()
 	r, err := e.wrapped.Exec(query, args)
 	dur := time.Now().Sub(start)
-	if err == nil {
-		e.statsConn.d.Execed(dur, query)
-	}
+	e.statsConn.d.Execed(dur, query, err)
 	return r, err
 }
 
@@ -212,7 +212,7 @@ func (vc *statsColumnConverter) ColumnConverter(idx int) driver.ValueConverter {
 
 func (s *statsStmt) Close() error {
 	err := s.wrapped.Close()
-	s.d.StmtClosed()
+	s.d.StmtClosed(err)
 	return err
 }
 
@@ -224,9 +224,7 @@ func (s *statsStmt) Exec(args []driver.Value) (driver.Result, error) {
 	start := time.Now()
 	r, err := s.wrapped.Exec(args)
 	dur := time.Now().Sub(start)
-	if err == nil {
-		s.d.Execed(dur, s.query)
-	}
+	s.d.Execed(dur, s.query, err)
 	return r, err
 }
 
@@ -234,8 +232,8 @@ func (s *statsStmt) Query(args []driver.Value) (driver.Rows, error) {
 	start := time.Now()
 	r, err := s.wrapped.Query(args)
 	dur := time.Now().Sub(start)
+	s.d.Queried(dur, s.query, err)
 	if err == nil {
-		s.d.Queried(dur, s.query)
 		r = &statsRows{d: s.d, wrapped: r}
 	}
 	return r, err
@@ -254,8 +252,8 @@ func (r *statsRows) Close() error {
 }
 func (r *statsRows) Next(dest []driver.Value) error {
 	err := r.wrapped.Next(dest)
-	if err == nil {
-		r.d.RowIterated()
+	if err != io.EOF {
+		r.d.RowIterated(err)
 	}
 	return err
 }
@@ -267,12 +265,12 @@ type statsTx struct {
 
 func (t *statsTx) Commit() error {
 	err := t.wrapped.Commit()
-	t.d.TxCommitted()
+	t.d.TxCommitted(err)
 	return err
 }
 
 func (t *statsTx) Rollback() error {
 	err := t.wrapped.Rollback()
-	t.d.TxRolledback()
+	t.d.TxRolledback(err)
 	return err
 }

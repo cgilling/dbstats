@@ -3,7 +3,7 @@ package dbstats
 import (
 	"database/sql"
 	"database/sql/driver"
-	"fmt"
+	"errors"
 	"io"
 	"testing"
 	"time"
@@ -23,6 +23,9 @@ var (
 	execerCalled         bool
 	useColumnConverter   bool
 	columnCoverterCalled bool
+
+	connOpenErr  error
+	connCloseErr error
 )
 
 func init() {
@@ -51,6 +54,8 @@ func reset() {
 	execerCalled = false
 	useColumnConverter = false
 	columnCoverterCalled = false
+	connOpenErr = nil
+	connCloseErr = nil
 	hook.reset()
 }
 
@@ -62,6 +67,9 @@ type fakeDriver struct {
 
 func (d *fakeDriver) Open(name string) (driver.Conn, error) {
 	d.openNames = append(d.openNames, name)
+	if connOpenErr != nil {
+		return nil, connOpenErr
+	}
 	if d.isExecer && d.isQueryer {
 		return &fakeExecerQueryer{}, nil
 	} else if d.isQueryer {
@@ -81,7 +89,7 @@ func (c *fakeConn) Prepare(query string) (driver.Stmt, error) {
 	return &fakeStmt{}, nil
 }
 func (c *fakeConn) Close() error {
-	return nil
+	return connCloseErr
 }
 func (c *fakeConn) Begin() (driver.Tx, error) {
 	return &fakeTx{}, nil
@@ -189,6 +197,7 @@ type fakeHook struct {
 	queriedCount      int
 	execedCount       int
 	rowIteratedCount  int
+	numErr            int
 }
 
 func (h *fakeHook) reset() {
@@ -202,36 +211,43 @@ func (h *fakeHook) reset() {
 	h.queriedCount = 0
 	h.execedCount = 0
 	h.rowIteratedCount = 0
+	h.numErr = 0
 }
 
-func (h *fakeHook) ConnOpened() {
+func (h *fakeHook) ConnOpened(err error) {
 	h.connOpenedCount++
+	if err != nil {
+		h.numErr++
+	}
 }
-func (h *fakeHook) ConnClosed() {
+func (h *fakeHook) ConnClosed(err error) {
 	h.connClosedCount++
+	if err != nil {
+		h.numErr++
+	}
 }
-func (h *fakeHook) StmtPrepared(query string) {
+func (h *fakeHook) StmtPrepared(query string, err error) {
 	h.stmtPreparedCount++
 }
-func (h *fakeHook) StmtClosed() {
+func (h *fakeHook) StmtClosed(err error) {
 	h.stmtClosedCount++
 }
-func (h *fakeHook) TxBegan() {
+func (h *fakeHook) TxBegan(err error) {
 	h.txBeganCount++
 }
-func (h *fakeHook) TxCommitted() {
+func (h *fakeHook) TxCommitted(err error) {
 	h.txCommitedCount++
 }
-func (h *fakeHook) TxRolledback() {
+func (h *fakeHook) TxRolledback(err error) {
 	h.txRolledbackCount++
 }
-func (h *fakeHook) Queried(d time.Duration, query string) {
+func (h *fakeHook) Queried(d time.Duration, query string, err error) {
 	h.queriedCount++
 }
-func (h *fakeHook) Execed(d time.Duration, query string) {
+func (h *fakeHook) Execed(d time.Duration, query string, err error) {
 	h.execedCount++
 }
-func (h *fakeHook) RowIterated() {
+func (h *fakeHook) RowIterated(err error) {
 	h.rowIteratedCount++
 }
 
@@ -403,15 +419,38 @@ func TestDriverKeepsConnectionStats(t *testing.T) {
 
 type errDriver struct{}
 
-func (d errDriver) Open(name string) (driver.Conn, error) {
-	return nil, fmt.Errorf("failed to open")
+func (d *errDriver) Open(name string) (driver.Conn, error) {
+	return nil, connOpenErr
 }
 
-func TestHandlerOpenReturnsErr(t *testing.T) {
-	sql.Register("errorStats", New(errDriver{}.Open))
-	db, _ := sql.Open("errorStats", "")
+func TestOpenReturnsErr(t *testing.T) {
+	reset()
+	myErr := errors.New("failed to open connection")
+	connOpenErr = myErr
+	db, _ := sql.Open("fakeStats", "")
+	defer db.Close()
 	err := db.Ping()
-	if err == nil {
+	switch {
+	case err != myErr:
 		t.Errorf("Expected error to be returned")
+	case hook.connOpenedCount != 1:
+		t.Errorf("Expected ConnOpen to be called")
+	case hook.numErr == 0:
+		t.Errorf("Expected error to be passed to hook")
+	}
+}
+
+func TestConnCloseReturnsErr(t *testing.T) {
+	reset()
+	myErr := errors.New("failed to open connection")
+	connCloseErr = myErr
+	db, _ := sql.Open("fakeStats", "")
+	db.Ping()
+	db.Close()
+	switch {
+	case hook.connClosedCount != 1:
+		t.Errorf("Expected ConnOpen to be called")
+	case hook.numErr == 0:
+		t.Errorf("Expected error to be passed to hook")
 	}
 }
